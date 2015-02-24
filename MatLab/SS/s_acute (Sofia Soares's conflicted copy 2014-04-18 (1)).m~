@@ -1,0 +1,482 @@
+%filename = 'C:\Users\Behave\Dropbox\PatonLab\Paton Lab\Data\TAFCmice\Ephys\Acute\#457\BVA__2014-04-01_#457-field3_8';
+
+rd = brigdefs();
+path = rd.Dir.Acute;
+animal = '#468';
+filename = 'BVA__2014-04-09_#468-cell#7-3021_5';
+fullpath = fullfile(path,animal,filename);
+
+%fullpath = '/Users/ssoares/Desktop/#468/BVA__2014-04-09_#468-field2_8';
+
+
+data_raw = daqread(fullfile([fullpath '.daq']));
+dataLEDCond = load(fullfile([fullpath '_LEDCond']));
+dataTrigCond = load(fullfile([fullpath '_TrigCond']));
+samp_rate = 32000; % in Hz
+
+cutoff_h = 300;
+cutoff_l = 200;
+dt=1/samp_rate;
+high = 1;
+low = 0;
+offset = 1; %in seconds
+trial_dur = 5; %in sec
+pulse_width = 20;%in ms
+low = 0;
+
+
+data.raw = data_raw;
+data.LEDCond = dataLEDCond;
+data.TrigCond = dataTrigCond;
+data.samp_rate = samp_rate;
+data.cutoff_h = cutoff_h;
+data.cutoff_l = cutoff_l;
+data.dt = dt;
+data.offset = offset; %in seconds
+data.trial_dur = trial_dur; %in sec
+data.pulse_width = pulse_width;%in ms
+data.Fullpath = fullpath;
+data.FileName = filename;
+data.Animal = animal;
+
+saveBstruct(data)
+
+%or
+
+%%
+%Back up raw and high-pass filter data
+
+data_raw_backup = data_raw;
+data_raw = data_raw(:,10);
+data_raw(find(isnan(data_raw)))=0;
+data_filt_h = filterdata(data_raw,dt,cutoff_h,high);
+data_filt_l = filterdata(data_raw,dt,cutoff_l,low);
+
+%%
+%Plot full session
+h = figure;
+set(h, 'WindowStyle', 'docked');
+
+
+plot([1:length(data_raw)]/samp_rate,data_raw,'k');
+hold on;
+plot([1:length(data_filt_h)]/samp_rate,data_filt_h,'b');
+hold on;
+plot([1:length(data_filt_l)]/samp_rate,data_filt_l,'g');
+
+savename_fig =  ['full_session' num2str(data.pulse_width) 'ms'];
+xlabel('time(s)') 
+ylabel('mvolts')
+title(savename_fig) 
+legend('raw','high pass','low pass')
+
+patht = fullfile(rd.Dir.Acute, 'SummaryFigs',data.Animal);
+mkdir(patht);
+%parentfolder(patht,1) %not working for mac?
+savefiledesc = [data.FileName '_' savename_fig];
+%export_fig(h, fullfile(patht, [savefiledesc]),'-pdf','-transparent');
+saveas(h, fullfile(patht,[savefiledesc '.fig']));
+
+
+% in progress 
+% plot_raw_filt(data_raw,data_filt_h,samp_rate,2); %plot raw and high pass filtered data
+% 
+% plot_raw_filt(data_raw,data_filt_l,samp_rate,1); %plot raw and low pass filtered data
+% 
+
+
+%%
+%Split data per trials
+
+num_trials = length(find(~isnan(dataTrigCond.CondNum(1,:))))-1;
+trial_length = samp_rate*trial_dur;  % in samples
+
+data_split_raw = reshape(data_raw(1:trial_length*(num_trials)),trial_length,num_trials);
+data_split_filt_h = reshape(data_filt_h(1:trial_length*(num_trials)),trial_length,num_trials);
+data_split_filt_l = reshape(data_filt_l(1:trial_length*(num_trials)),trial_length,num_trials);
+mean_data_split_filt_l = mean(data_split_filt_l');
+
+window_end = find(diff(mean_data_split_filt_l(samp_rate*offset+160:end))>=0)+samp_rate*offset+160; %start looking some samples ahead
+window_end = window_end(1); 
+
+
+for i = 1:size(data_split_filt_l,2)
+    
+    p(i,:) = polyfit((offset*samp_rate:window_end)',data_split_filt_l(offset*samp_rate:window_end,i),1);
+    
+    fit = (offset*samp_rate:window_end)*p(i,1) + p(i,2);
+    if i==1
+        figure
+        plot([1:length(data_split_filt_l)]/samp_rate*1000,data_split_filt_l(:,i),'k');
+        hold on;
+        plot((offset*samp_rate:window_end)/samp_rate*1000,fit,'g');
+    end
+end
+
+
+h = figure;
+set(h, 'WindowStyle', 'docked');
+plot([1:length(mean_data_split_filt_l)]/samp_rate*1000,mean_data_split_filt_l,'g');
+
+
+savename_fig =  ['average_low_pass_filt' num2str(data.pulse_width) 'ms'];
+xlabel('time(ms)') 
+ylabel('mvolts')
+title(savename_fig) 
+legend('average low pass')
+
+patht = fullfile(rd.Dir.Acute, 'SummaryFigs',data.Animal);
+mkdir(patht);
+%parentfolder(patht,1) %not working for mac?
+savefiledesc = [data.FileName '_' savename_fig];
+%export_fig(h, fullfile(patht, [savefiledesc]),'-pdf','-transparent');
+saveas(h, fullfile(patht,[savefiledesc '.fig']));
+
+h = figure;
+set(h, 'WindowStyle', 'docked');
+
+hist(p(:,1),10)
+
+savename_fig =  ['hist-slopes-field' num2str(data.pulse_width) 'ms'];
+xlabel('slope') 
+ylabel('trials')
+title(savename_fig) 
+
+patht = fullfile(rd.Dir.Acute, 'SummaryFigs',data.Animal);
+mkdir(patht);
+%parentfolder(patht,1) %not working for mac?
+savefiledesc = [data.FileName '_' savename_fig];
+%export_fig(h, fullfile(patht, [savefiledesc]),'-pdf','-transparent');
+saveas(h, fullfile(patht,[savefiledesc '.fig']));
+
+
+
+
+%%
+%plot overlay all trials raw
+h = figure;
+set(h, 'WindowStyle', 'docked');
+colors = copper(num_trials);
+%clf
+for i = 1:num_trials
+%     if 1
+        plot([1:size(data_split_raw,1)]/samp_rate*1000, data_split_raw(:,i),'color',colors(i,:))
+        hold on
+end
+
+
+savename_fig =  ['overlay_all_trials_raw' num2str(data.pulse_width) 'ms'];
+xlabel('time(ms)') 
+ylabel('mvolts')
+title(savename_fig) 
+
+patht = fullfile(rd.Dir.Acute, 'SummaryFigs',data.Animal);
+mkdir(patht);
+%parentfolder(patht,1) %not working for mac?
+savefiledesc = [data.FileName '_' savename_fig];
+%export_fig(h, fullfile(patht, [savefiledesc]),'-pdf','-transparent');
+saveas(h, fullfile(patht,[savefiledesc '.fig']));
+
+
+
+
+%%
+
+%plot overlay all trials filt
+h = figure;
+set(h, 'WindowStyle', 'docked');
+colors = copper(num_trials);
+%clf
+for i = 1:num_trials
+
+        plot([1:size(data_split_filt_h,1)]/samp_rate*1000, data_split_filt_h(:,i),'color',colors(i,:))
+        hold on
+end
+
+savename_fig = ['overlay_all_trials_high_pass_filt' num2str(data.pulse_width) 'ms'];
+xlabel('time(ms)') 
+ylabel('mvolts')
+title(savename_fig) 
+
+
+patht = fullfile(rd.Dir.Acute, 'SummaryFigs',data.Animal);
+mkdir(patht);
+%parentfolder(patht,1) %not working for mac?
+savefiledesc = [data.FileName '_' savename_fig];
+%export_fig(h, fullfile(patht, [savefiledesc]),'-pdf','-transparent');
+saveas(h, fullfile(patht,[savefiledesc '.fig']));
+
+
+
+%%
+%filter full session data
+
+thres = -0.1; %threshold for spiking
+
+%for visualizing thresholded waveforms
+before = 1; %in ms
+after = 2;%in ms
+%thres = max(raw_data-(median(raw_data)))/2+(median(raw_data)); %
+
+binary_data=data_filt_h<=thres;
+fall = find(diff(binary_data)==1);
+rise = find(diff(binary_data)==-1);     
+n_spikes = length(fall);
+
+window_before = samp_rate*(before/1000); %in samples (sample rate*time in s)
+
+window_after = samp_rate*(after/1000); %in sampes (sample rate*time in s)
+%%
+%Plot aligned thresholded putative spikes
+
+h = figure;
+set(h, 'WindowStyle', 'docked');
+colors = copper(n_spikes);
+for i = 1:n_spikes
+
+spikes(:,i) = data_filt_h(fall(i)-window_before:fall(i)+window_after);
+
+plot([1:size(spikes,1)]/samp_rate*1000, spikes(:,i),'color',colors(i,:))
+
+hold on
+
+end
+
+
+savename_fig = ['aligned_thres_putative_spikes' num2str(data.pulse_width) 'ms'];
+xlabel('time(ms)') 
+ylabel('mvolts')
+title(savename_fig) 
+
+
+patht = fullfile(rd.Dir.Acute, 'SummaryFigs',data.Animal);
+mkdir(patht);
+%parentfolder(patht,1) %not working for mac?
+savefiledesc = [data.FileName '_' savename_fig];
+%export_fig(h, fullfile(patht, [savefiledesc]),'-pdf','-transparent');
+saveas(h, fullfile(patht,[savefiledesc '.fig']));
+
+
+%%
+%plot pc
+%[coeff score] = pca(spikes,'Algorithm','EIG');
+[coeff score] = princomp(spikes);
+
+h = figure;
+set(h, 'WindowStyle', 'docked');
+plot(coeff(:,1),coeff(:,2),'.','markersize',7)
+
+savename_fig = ['PCA' num2str(data.pulse_width) 'ms'];
+xlabel('PC1') 
+ylabel('PC2')
+title(savename_fig) 
+
+
+patht = fullfile(rd.Dir.Acute, 'SummaryFigs',data.Animal);
+mkdir(patht);
+%parentfolder(patht,1) %not working for mac?
+savefiledesc = [data.FileName '_' savename_fig];
+%export_fig(h, fullfile(patht, [savefiledesc]),'-pdf','-transparent');
+saveas(h, fullfile(patht,[savefiledesc '.fig']));
+
+
+
+%%
+%select spike
+spikes_sorted_t = fall(find(coeff(:,1)>0.07));
+n_spikes_sorted = length(spikes_sorted_t);
+
+%%
+%plot sorted spikes
+
+h = figure;
+set(h, 'WindowStyle', 'docked');
+colors = copper(n_spikes_sorted);
+for i = 1:n_spikes_sorted
+    
+spikes_sorted(:,i) = data_filt_h(spikes_sorted_t(i)-window_before:spikes_sorted_t(i)+window_after);
+
+plot([1:size(spikes_sorted,1)]/samp_rate*1000, spikes_sorted(:,i),'color',colors(i,:))
+
+hold on
+
+end
+
+savename_fig = ['aligned_thres_sorted_spikes' num2str(data.pulse_width) 'ms'];
+xlabel('time(ms)') 
+ylabel('mvolts')
+title(savename_fig) 
+
+
+patht = fullfile(rd.Dir.Acute, 'SummaryFigs',data.Animal);
+mkdir(patht);
+%parentfolder(patht,1) %not working for mac?
+savefiledesc = [data.FileName '_' savename_fig];
+%export_fig(h, fullfile(patht, [savefiledesc]),'-pdf','-transparent');
+saveas(h, fullfile(patht,[savefiledesc '.fig']));
+
+
+
+
+%%
+%Make raster
+
+
+light_on = [samp_rate*offset:samp_rate*trial_dur:length(data_raw)];
+light_on = light_on(1:num_trials);
+
+before = offset; %in s
+after = trial_dur;%in s
+window_before = samp_rate*(before); %in samples (sample rate*time in s)
+window_after = samp_rate*(after); %in sampes (sample rate*time in s)
+raster = NaN(size(data_filt_h,1),size(data_filt_h,2));
+
+raster(spikes_sorted_t)=1;
+raster_split = reshape(raster(1:trial_length*(num_trials)),trial_length,num_trials);
+
+
+h = figure;
+set(h, 'WindowStyle', 'docked');
+xymark(1,:)=[0 0];	% a baton
+xymark(2,:)=[-1 1];
+
+for i = 1:num_trials
+    
+%plot([1:size(raster_split,1)]/samp_rate*1000, raster_split(:,i)*i)
+
+linecustommarker([1:size(raster_split,1)]/samp_rate*1000, raster_split(:,i)*i,xymark,[]);
+
+hold on
+
+end
+
+
+savename_fig = ['raster' num2str(data.pulse_width) 'ms'];
+xlabel('time(ms)') 
+ylabel('trials')
+title(savename_fig) 
+
+
+patht = fullfile(rd.Dir.Acute, 'SummaryFigs',data.Animal);
+mkdir(patht);
+%parentfolder(patht,1) %not working for mac?
+savefiledesc = [data.FileName '_' savename_fig];
+%export_fig(h, fullfile(patht, [savefiledesc]),'-pdf','-transparent');
+saveas(h, fullfile(patht,[savefiledesc '.fig']));
+
+
+%%
+%calculate latency distributions from the first spike in response to the
+%first light pulse of each trial
+
+
+for i=1:num_trials
+first_spikes_ind(i) = find(spikes_sorted_t > light_on(i), 1, 'first');
+
+end
+
+first_spikes_t = spikes_sorted_t(first_spikes_ind);
+
+first_spikes_latency = (first_spikes_t-light_on)/samp_rate*1000; %in ms
+
+
+
+h = figure;
+set(h, 'WindowStyle', 'docked');
+
+hist(first_spikes_latency,30)
+
+savename_fig = ['spike_latency_from_first_pulse' num2str(data.pulse_width) 'ms'];
+xlabel('latency(ms)') 
+ylabel('spikes')
+title(savename_fig) 
+
+
+patht = fullfile(rd.Dir.Acute, 'SummaryFigs',data.Animal);
+mkdir(patht);
+%parentfolder(patht,1) %not working for mac?
+savefiledesc = [data.FileName '_' savename_fig];
+%export_fig(h, fullfile(patht, [savefiledesc]),'-pdf','-transparent');
+saveas(h, fullfile(patht,[savefiledesc '.fig']));
+
+
+
+%%
+
+% 
+% 
+% 
+% %% spike sortingt from Bass
+% 
+% Fs = 32000;
+% thresh = -0.1;
+% detect_method = 'manual';
+% 
+% % format data for ultramegasort
+% 
+% ntrials = size(data_spilt,2);
+% for itrial = 1:ntrials
+%     % replace nan's not sure why they are there
+%     temp = data_spilt(:,itrial);
+%     temp(isnan(temp)) = 0;
+%   datacell{itrial} =   temp;
+% end
+% 
+% spikes = ss_default_params_custom(Fs,'detect_method',detect_method,'thresh',thresh);
+% spikes = ss_detect_custom(datacell,spikes);
+% spikes = ss_align(spikes);
+% spikes = ss_kmeans(spikes);
+% spikes = ss_energy(spikes);
+% spikes = ss_aggregate(spikes);
+% 
+% %% GUI tools
+% % main tool
+% splitmerge_tool(spikes)
+% 
+% % stand alone outlier tool
+% outlier_tool(spikes)
+% 
+% 
+% 
+% 
+% 
+% %%%
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%in progess%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% %look at a single trial to detect spikes
+%  
+% 
+% thres = 0.15; %threshold for spiking
+% %thres = max(raw_data-(median(raw_data)))/2+(median(raw_data));
+% 
+% binary_data=data_spilt(:,i)>=thres;
+% rise = find([0; diff(binary_data)==1]);
+% fall = find([0; diff(binary_data)==-1]);
+% %%not looked at this part yet!!!!
+% nrise = length(rise);
+% include = [];
+% for irise = 1:nrise
+%     if (all(binary_data(rise(irise)-nframe:rise(irise)-2) ==0)&& ...% before rising is below threshold
+%           all(binary_data(rise(irise):rise(irise)+nframe)==1)) % after is above threshold
+%     include(end+1) = irise;
+%     end
+% end
+% rise = rise(include);
+% 
+% nfall = length(fall);
+% include = [];
+% for ifall = 1:nfall
+%     if (all(binary_data(fall(ifall)-nframe:fall(ifall)-2) ==0)&& ...% before rising is below threshold
+%           all(binary_data(fall(ifall):fall(ifall)+nframe)==1)) % after is above threshold
+%     include(end+1) = ifall;
+%     end
+% end
+% fall = fall(include);
+% 
+% 
+% if bplot
+%     plot(raw_data)
+%     hold on
+%     plot(rise,ones(1,length(rise))*thres,'.g')
+%     hold on
+%     plot(fall,ones(1,length(fall))*thres/2,'.r')
+% end

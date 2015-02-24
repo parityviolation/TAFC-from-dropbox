@@ -1,0 +1,4 @@
+TAFCv03 - Oct 25th 2012
+by Thiago Gouvêa
+
+Serial prints reduced to a third by concatenating event ID, tab and timestamp to a single String variable.

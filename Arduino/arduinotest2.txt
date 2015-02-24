@@ -1,0 +1,22 @@
+int stimSet[] = {600, 1050, 1260, 1380, 1620, 1740, 1950, 2400};
+int stimSetInd[] = {0, 1, 2, 2,3,3,3,4,4,4,5,5,6,7};
+int sizestimSetInd = 14;
+int bound = 7000;
+int ITI = 9000;
+int timeOut = 12000;
+int choiceDeadline = 5000;
+int clThre = 3;
+int clCredit = 1;
+int error[] = {
+  0, 0, 0, 3, 0, 0, 0, 0};
+int trialNum = 50;
+
+// Task parameters
+//int stimSet[] = {1050, 1950};
+//int stimSet[] = {1050, 1260, 1740, 1950};
+//int stimSet[] = {1050, 1260, 1380, 1620, 1740, 1950};
+
+//int timeValvL = 115; // Calibrate valves for 25 ul
+//int timeValvR = 150; // Calibrate valves for 25 ul
+
+// Internal variables
